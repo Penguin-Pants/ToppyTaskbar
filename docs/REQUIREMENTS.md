@@ -26,7 +26,7 @@ Status: **decision-complete** (no open questions). Date: 2026-10-19.
 
 ### R2. Checks at start
 - R2.1 Read the Windows build and revision (UBR).
-- R2.2 Supported: Windows 11 client edition (product type workstation, not Server) with Build 26200 and UBR 9445 or higher. Enable works only on a supported build. On any other OS or build, do not query or write overrides, with one exception: on a Windows 11 client edition with an ownership record (R4.5), allow Undo (R6) so the user can clean up after an OS upgrade.
+- R2.2 Supported: Windows 11 client edition (product type workstation, not Server) on native x64 hardware (not ARM64, also not under x64 emulation) with Build 26200 and UBR 9445 or higher. Enable works only on a supported build. On any other OS or build, do not query or write overrides, with one exception: on a Windows 11 client edition with an ownership record (R4.5), allow Undo (R6) so the user can clean up after an OS upgrade.
 - R2.3 Read the current state of the taskbar-position feature ID (see R9). Read the ownership record (R4.5) to find out if this program wrote the override.
 - R2.4 Find out if Start11 is running (process check).
 - R2.5 Find out if a restart is pending: a pending marker (R4.4) exists and its boot session is the current boot session.
@@ -45,9 +45,9 @@ The window shows one clear status line and only the buttons that apply:
 | Feature on by Microsoft (no override) | The option is available. This program changed nothing. | Open taskbar settings, Close |
 | Override set by another tool (no ownership record; enabled or disabled) | The option was changed by another tool. This program does not change it. | Open taskbar settings (only if the feature is on), Close |
 
-- R3.1 State priority, highest first: Cannot read state, Not supported, Restart pending, Override set by another tool, Feature on by this program, Feature on by Microsoft, Supported feature off. The first state that matches applies.
-- R3.2 Show Undo only when the ownership record (R4.5) exists.
-- R3.3 "Supported, feature off" applies only when no override exists or this program's ownership record exists. Enable never overwrites another tool's override.
+- R3.1 State priority, highest first: Cannot read state, Restart pending, Not supported, Override set by another tool, Feature on by this program, Feature on by Microsoft, Supported feature off. The first state that matches applies.
+- R3.2 When the ownership record (R4.5) exists, show Undo in every state except "Cannot read state" and "Restart pending". Without the record, never show Undo.
+- R3.3 "Supported, feature off" applies only when no override exists or this program's ownership record exists. Enable never overwrites an override that has no ownership record. Accepted risk: if another tool changes the same ID after this program wrote it, the program does not detect that and treats the override as its own.
 
 ### R4. Enable
 - R4.1 "Enable" sets the feature ID(s) in R9 to **enabled**, with the same mechanism ViVeTool uses (persistent override that survives restart).
