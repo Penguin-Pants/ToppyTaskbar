@@ -27,8 +27,9 @@ Status: **decision-complete** (no open questions). Date: 2026-10-19.
 ### R2. Checks at start
 - R2.1 Read the Windows build and revision (UBR).
 - R2.2 Supported: Build 26200 with UBR 9445 or higher, and Build 26100 with UBR 9445 or higher.
-- R2.3 Read the current state of feature IDs **61161244** and **61754985**.
+- R2.3 Read the current state of the taskbar-position feature ID (see R9) and find out if this program's override for it exists.
 - R2.4 Find out if Start11 is running (process check).
+- R2.5 Find out if a restart is pending: a pending marker (R4.4) exists and its boot session is the current boot session.
 
 ### R3. Status display
 The window shows one clear status line and only the buttons that apply:
@@ -37,13 +38,18 @@ The window shows one clear status line and only the buttons that apply:
 |---|---|---|
 | Build not supported | Install the September 2026 Windows update first. No changes made. | Close |
 | Supported, feature off | The top taskbar option is hidden on this PC. | Enable, Close |
-| Feature on, restart pending | Restart to finish. | Restart now, Later |
-| Feature on and active | The option is available. | Open taskbar settings, Undo, Close |
+| Restart pending (after Enable or Undo) | Restart to finish. | Restart now, Later |
+| Feature on by this program | The option is available. If it is missing in Settings, Microsoft may have changed the feature. Use Undo. | Open taskbar settings, Undo, Close |
+| Feature on by Microsoft (no override) | The option is available. This program changed nothing. | Open taskbar settings, Close |
+
+- R3.1 "Restart pending" has priority over all other states except "Build not supported".
+- R3.2 Show Undo only when this program's override exists.
 
 ### R4. Enable
-- R4.1 "Enable" sets both feature IDs to **enabled**, with the same mechanism ViVeTool uses (persistent override that survives restart).
+- R4.1 "Enable" sets the feature ID(s) in R9 to **enabled**, with the same mechanism ViVeTool uses (persistent override that survives restart).
 - R4.2 After success, ask: **Restart now** or **Later**. "Restart now" restarts Windows. "Later" closes the dialog.
 - R4.3 The program does not restart Windows without the user's confirmation.
+- R4.4 After a successful Enable or Undo, store a pending marker with the current boot session identifier (for example the system boot time) under `HKLM\SOFTWARE\ToppyTaskbar`. At start, delete the marker if its boot session is not the current one.
 
 ### R5. Set the taskbar to top
 - R5.1 The program does **not** write the taskbar position itself.
@@ -51,7 +57,7 @@ The window shows one clear status line and only the buttons that apply:
 - R5.3 When the user starts the program after the restart and the feature is on, the program shows the "Open taskbar settings" button (R3).
 
 ### R6. Undo
-- R6.1 "Undo" removes the overrides for both feature IDs (returns them to the Microsoft default state). It does not force them to "disabled".
+- R6.1 "Undo" removes this program's override for the feature ID(s) in R9 (returns them to the Microsoft default state). It does not force them to "disabled".
 - R6.2 After success, ask: **Restart now** or **Later** (same as R4.2).
 - R6.3 The status text tells the user to set the taskbar position back to Bottom in Settings first, if they want the bottom position.
 
@@ -65,6 +71,13 @@ The window shows one clear status line and only the buttons that apply:
 - R8.2 Screen readers read the status text and all buttons (standard Win32 or WinForms/WPF controls with names).
 - R8.3 The window supports high contrast and display scaling up to 200% (per-monitor DPI aware).
 - R8.4 Large, clear buttons. Plain text without technical terms in the main status line.
+
+### R9. Feature IDs
+- R9.1 Default: override only **59213768** (Taskbar position setting).
+- R9.2 Do not override bundle or unrelated IDs: **61161244** (update bundle, many features) and **61754985** (Start menu customization).
+- R9.3 Exception: if the release test on the target PC (R9.4) shows that 59213768 alone does not show the option, add 61161244 as a dependency. Document this in the release notes. Never add Start menu IDs.
+- R9.4 Before the first release, test on the target PC: enable, restart, confirm that "Taskbar position" shows, then Undo and confirm that it is hidden again.
+- R9.5 Keep all IDs as constants in one place in the code.
 
 ## 3. Preferences and examples (not requirements)
 - **ViVeTool**: an example of the mechanism. The program can use its own code or a library. If it bundles ViVeTool code, its license (GPL-3.0) must be compatible with this repository (AGPL-3.0).
@@ -89,10 +102,11 @@ The window shows one clear status line and only the buttons that apply:
 |---|---|
 | User declines UAC | Program does not start. Windows handles this. |
 | Build below the minimum | Show "update Windows" status. Make no changes. |
-| Feature already on (CFR reached the PC) | Show "available" state. Do not write overrides. |
-| Only one of the two IDs is on | Treat as "feature off". Enable sets both. |
+| Feature already on (CFR reached the PC) | Show "Feature on by Microsoft". Do not write overrides. No Undo. |
+| Started again after "Later", before restart | Show "Restart pending" (R2.5). Do not show "available". |
+| Pending marker from an earlier boot | Delete it. Continue with normal checks. |
 | Writing the overrides fails | Show an error with the system error code. Make no partial change visible as success. |
-| After restart, the option is still missing | Status: "Feature is on, but Windows does not show the option. Microsoft may have changed this feature." Offer Undo. |
+| After restart, the option is still missing | No reliable automatic check exists. The "Feature on by this program" status text tells the user what to do (use Undo). |
 | A Windows update removes the overrides | User runs the program again. It shows "feature off". |
 | Microsoft changes the feature IDs in a later build | Program shows "feature off" or the missing-option status. The IDs are constants in one place in the code, so a new release can change them. |
 | Start11 running | Warning (R7). Continue. |
@@ -101,7 +115,7 @@ The window shows one clear status line and only the buttons that apply:
 
 ## 6. Confirmed constraints
 - Target PC: Windows 11 25H2, Build 26200.9457.
-- Feature IDs: 61161244 and 61754985 (source: Windows Latest, 2026-09-09; verify on a test PC before release).
+- Feature ID: 59213768 for Taskbar position (sources: Allthings.how, Pureinfotech, phantomofearth). Windows Latest names 61161244 and 61754985 instead; R9 resolves this. Verify per R9.4.
 - Admin rights and a restart are necessary to change feature overrides.
 - Repository license: AGPL-3.0.
 - Build in GitHub Actions. Output: unsigned `.exe` in a GitHub release.
@@ -122,4 +136,6 @@ None.
 ## Sources
 - [Windows Latest: Windows 11 restores the movable taskbar (KB5124008)](https://www.windowslatest.com/2026/09/09/windows-11-finally-restores-a-windows-10-feature-after-five-years-the-movable-taskbar/)
 - [NTCompatible: KB5120998 preview, taskbar position](https://www.ntcompatible.com/story/windows-11-august-2026-update-kb5120998-preview-taskbar-finally-moves-24h2-eol-looms/)
+- [Allthings.how: KB5120998 hidden features and flag list](https://allthings.how/windows-11-kb5120998-unlock-the-update-s-hidden-features-early/)
+- [phantomofearth on X: taskbar position flag 59213768](https://x.com/phantomofearth/status/2055393218703835163)
 - [Ramen Software: Windhawk mod "Taskbar on top for Windows 11"](https://ramensoftware.com/windhawk-mod-taskbar-on-top-for-windows-11)
