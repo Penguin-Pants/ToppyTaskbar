@@ -27,7 +27,7 @@ Status: **decision-complete** (no open questions). Date: 2026-10-19.
 ### R2. Checks at start
 - R2.1 Read the Windows build and revision (UBR).
 - R2.2 Supported: Windows 11 client edition (product type workstation, not Server) on native x64 hardware (not ARM64, also not under x64 emulation) with Build 26200 and UBR 9445 or higher. Enable works only on a supported build. On any other OS or build, do not query or write overrides, with one exception: on a Windows 11 client edition with an ownership record (R4.5), allow Undo (R6) so the user can clean up after an OS upgrade.
-- R2.3 Read the current state of the taskbar-position feature ID (see R9). Read the ownership record (R4.5) to find out if this program wrote the override.
+- R2.3 Always read the ownership record (R4.5). Only when R2.2 support is confirmed, read the current state and the overrides (Runtime and Boot store) of every feature ID configured in R9. On an unsupported OS or build, do not query the feature store. Undo there (R2.2) writes the recorded previous values without a query.
 - R2.4 Find out if Start11 is running (process check).
 - R2.5 Find out if a restart is pending: a pending marker (R4.4) exists and its boot session is the current boot session.
 - R2.6 If any read in R2.1 to R2.5 fails, show the "Cannot read state" status (R3). Never treat a failed read as "feature off" or "no record".
@@ -50,11 +50,11 @@ The window shows one clear status line and only the buttons that apply:
 - R3.3 "Supported, feature off" applies only when no override exists or this program's ownership record exists. Enable never overwrites an override that has no ownership record. Accepted risk: if another tool changes the same ID after this program wrote it, the program does not detect that and treats the override as its own.
 
 ### R4. Enable
-- R4.1 "Enable" sets the feature ID(s) in R9 to **enabled**, with the same mechanism ViVeTool uses (persistent override that survives restart).
+- R4.1 "Enable" sets every feature ID in R9 to **enabled** in both the Runtime and the Boot store, with the same mechanism ViVeTool uses (persistent override that survives restart). Any ID with a foreign override in either store blocks Enable (R3.3).
 - R4.2 After success, ask: **Restart now** or **Later**. "Restart now" restarts Windows. "Later" closes the dialog.
 - R4.3 The program does not restart Windows without the user's confirmation.
-- R4.4 After a successful Enable or Undo, store a pending marker with the current boot session identifier (for example the system boot time) under `HKLM\SOFTWARE\ToppyTaskbar`. At start, delete the marker if its boot session is not the current one.
-- R4.5 Before Enable writes, store a durable ownership record under `HKLM\SOFTWARE\ToppyTaskbar`: each feature ID it writes and that ID's previous override value (or "none"). The record stays until Undo succeeds. If a record already exists (for example after a Windows update removed the override), keep its original previous values.
+- R4.4 Write the pending marker before Enable or Undo changes the feature store, so that after a successful Enable or Undo the pending marker exists with the current boot session identifier (for example the system boot time) under `HKLM\SOFTWARE\ToppyTaskbar`. If the change fails and is fully rolled back, delete the marker. If the marker cannot be written, stop and change nothing. At start, delete the marker if its boot session is not the current one.
+- R4.5 Before Enable writes, store a durable ownership record under `HKLM\SOFTWARE\ToppyTaskbar`: each feature ID and store (Runtime, Boot) it writes, and the previous override value for that pair (or "none"). The record stays until Undo succeeds. If a record already exists (for example after a Windows update removed the override), keep its original previous values.
 - R4.6 Enable is all or nothing. If any write fails, restore the values that each ID had immediately before this attempt. Delete the ownership record only if this attempt created it and the rollback succeeds; otherwise keep the existing record. Show the error. If the rollback fails, keep the record, show the error with the IDs and their previous values, and show Undo so the user can try again.
 
 ### R5. Set the taskbar to top
@@ -64,7 +64,7 @@ The window shows one clear status line and only the buttons that apply:
 - R5.4 If the elevated account is not the signed-in desktop user (for example a standard user typed another administrator's password at UAC), hide "Open taskbar settings". Tell the user to open Settings > Personalization > Taskbar from their own account, because the setting is per user.
 
 ### R6. Undo
-- R6.1 "Undo" restores, for each ID in the ownership record, its previous value: it removes the override if the previous value was "none", or writes the previous override back. It does not force IDs to "disabled". Then it deletes the ownership record.
+- R6.1 "Undo" restores, for each ID and store pair in the ownership record, its previous value: it removes the override if the previous value was "none", or writes the previous override back. It does not force IDs to "disabled". Then it deletes the ownership record.
 - R6.2 After success, ask: **Restart now** or **Later** (same as R4.2).
 - R6.3 Before Undo writes, show a confirmation: "If you want the taskbar at the bottom, set Taskbar position to Bottom in Settings first. Continue with Undo?" Buttons: Continue, Cancel (default).
 - R6.4 Undo never changes an ID that is not in the ownership record.
