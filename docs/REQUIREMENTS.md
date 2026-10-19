@@ -26,25 +26,28 @@ Status: **decision-complete** (no open questions). Date: 2026-10-19.
 
 ### R2. Checks at start
 - R2.1 Read the Windows build and revision (UBR).
-- R2.2 Supported: Windows 11 client edition (product type workstation, not Server) with Build 26200 and UBR 9445 or higher. Do not query or write overrides on any other OS or build.
+- R2.2 Supported: Windows 11 client edition (product type workstation, not Server) with Build 26200 and UBR 9445 or higher. Enable works only on a supported build. On any other OS or build, do not query or write overrides, with one exception: on a Windows 11 client edition with an ownership record (R4.5), allow Undo (R6) so the user can clean up after an OS upgrade.
 - R2.3 Read the current state of the taskbar-position feature ID (see R9). Read the ownership record (R4.5) to find out if this program wrote the override.
 - R2.4 Find out if Start11 is running (process check).
 - R2.5 Find out if a restart is pending: a pending marker (R4.4) exists and its boot session is the current boot session.
+- R2.6 If any read in R2.1 to R2.5 fails, show the "Cannot read state" status (R3). Never treat a failed read as "feature off" or "no record".
 
 ### R3. Status display
 The window shows one clear status line and only the buttons that apply:
 
 | State | Status text (meaning) | Buttons |
 |---|---|---|
-| Not supported (wrong OS, edition or build) | This Windows version is not supported. On Windows 11 25H2, install the September 2026 update first. No changes made. | Close |
+| Cannot read state | The program cannot read the current settings. Error code shown. No changes made. | Close |
+| Not supported (wrong OS, edition or build) | This Windows version is not supported. On Windows 11 25H2, install the September 2026 update first. No changes made. | Close (plus Undo if an ownership record exists on Windows 11 client, R2.2) |
 | Supported, feature off | The top taskbar option is hidden on this PC. | Enable, Close |
 | Restart pending (after Enable or Undo) | Restart to finish. | Restart now, Later |
 | Feature on by this program | The option is available. If it is missing in Settings, Microsoft may have changed the feature. Use Undo. | Open taskbar settings, Undo, Close |
 | Feature on by Microsoft (no override) | The option is available. This program changed nothing. | Open taskbar settings, Close |
-| Override set by another tool (no ownership record) | The option was changed by another tool. This program does not change it. | Open taskbar settings, Close |
+| Override set by another tool (no ownership record; enabled or disabled) | The option was changed by another tool. This program does not change it. | Open taskbar settings (only if the feature is on), Close |
 
-- R3.1 "Restart pending" has priority over all other states except "Not supported".
+- R3.1 State priority, highest first: Cannot read state, Not supported, Restart pending, Override set by another tool, Feature on by this program, Feature on by Microsoft, Supported feature off. The first state that matches applies.
 - R3.2 Show Undo only when the ownership record (R4.5) exists.
+- R3.3 "Supported, feature off" applies only when no override exists or this program's ownership record exists. Enable never overwrites another tool's override.
 
 ### R4. Enable
 - R4.1 "Enable" sets the feature ID(s) in R9 to **enabled**, with the same mechanism ViVeTool uses (persistent override that survives restart).
@@ -52,17 +55,18 @@ The window shows one clear status line and only the buttons that apply:
 - R4.3 The program does not restart Windows without the user's confirmation.
 - R4.4 After a successful Enable or Undo, store a pending marker with the current boot session identifier (for example the system boot time) under `HKLM\SOFTWARE\ToppyTaskbar`. At start, delete the marker if its boot session is not the current one.
 - R4.5 Before Enable writes, store a durable ownership record under `HKLM\SOFTWARE\ToppyTaskbar`: each feature ID it writes and that ID's previous override value (or "none"). The record stays until Undo succeeds. If a record already exists (for example after a Windows update removed the override), keep its original previous values.
-- R4.6 Enable is all or nothing. If any write fails, restore the previous value of every ID already written, delete the ownership record and show the error. If the restore also fails, keep the ownership record, show the error with the IDs and their previous values, and show Undo so the user can try again.
+- R4.6 Enable is all or nothing. If any write fails, restore the values that each ID had immediately before this attempt. Delete the ownership record only if this attempt created it and the rollback succeeds; otherwise keep the existing record. Show the error. If the rollback fails, keep the record, show the error with the IDs and their previous values, and show Undo so the user can try again.
 
 ### R5. Set the taskbar to top
 - R5.1 The program does **not** write the taskbar position itself.
 - R5.2 "Open taskbar settings" opens `ms-settings:taskbar`. The user selects **Top** under Taskbar behaviors > Taskbar position.
 - R5.3 When the user starts the program after the restart and the feature is on, the program shows the "Open taskbar settings" button (R3).
+- R5.4 If the elevated account is not the signed-in desktop user (for example a standard user typed another administrator's password at UAC), hide "Open taskbar settings". Tell the user to open Settings > Personalization > Taskbar from their own account, because the setting is per user.
 
 ### R6. Undo
 - R6.1 "Undo" restores, for each ID in the ownership record, its previous value: it removes the override if the previous value was "none", or writes the previous override back. It does not force IDs to "disabled". Then it deletes the ownership record.
 - R6.2 After success, ask: **Restart now** or **Later** (same as R4.2).
-- R6.3 The status text tells the user to set the taskbar position back to Bottom in Settings first, if they want the bottom position.
+- R6.3 Before Undo writes, show a confirmation: "If you want the taskbar at the bottom, set Taskbar position to Bottom in Settings first. Continue with Undo?" Buttons: Continue, Cancel (default).
 - R6.4 Undo never changes an ID that is not in the ownership record.
 
 ### R7. Start11
@@ -105,7 +109,10 @@ The window shows one clear status line and only the buttons that apply:
 | Case | Behavior |
 |---|---|
 | User declines UAC | Program does not start. Windows handles this. |
-| Build below the minimum | Show "update Windows" status. Make no changes. |
+| Build below the minimum | Show "update Windows" status. Make no changes, except Undo if an ownership record exists (R2.2). |
+| Windows upgraded to a different build while the override exists | Show "Not supported" with Undo (R2.2). Enable is not available. |
+| A state read fails | Show "Cannot read state" (R2.6). Make no changes. |
+| Another tool set the override to disabled | Show "Override set by another tool". No Enable (R3.3). |
 | Feature already on (CFR reached the PC) | Show "Feature on by Microsoft". Do not write overrides. No Undo. |
 | Started again after "Later", before restart | Show "Restart pending" (R2.5). Do not show "available". |
 | Pending marker from an earlier boot | Delete it. Continue with normal checks. |
