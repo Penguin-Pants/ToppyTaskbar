@@ -41,21 +41,23 @@ The window shows one clear status line and only the buttons that apply:
 | Not supported (wrong OS, edition or build) | This Windows version is not supported. On Windows 11 25H2, install the September 2026 update first. No changes made. | Close (plus Undo if an ownership record exists on Windows 11 client, R2.2) |
 | Supported, feature off | The top taskbar option is hidden on this PC. | Enable, Close |
 | Restart pending (after Enable or Undo) | Restart to finish. | Restart now, Later |
+| Interrupted change (marker says "in progress") | The last change did not finish. Do not restart yet. Use Undo to return to the saved values. | Undo (if the ownership record exists), Close |
 | Feature on by this program | The option is available. If it is missing in Settings, Microsoft may have changed the feature. Use Undo. | Open taskbar settings, Undo, Close |
 | Feature on by Microsoft (no override) | The option is available. This program changed nothing. | Open taskbar settings, Close |
 | Override set by another tool (no ownership record; enabled or disabled) | The option was changed by another tool. This program does not change it. | Open taskbar settings (only if the feature is on), Close |
 
-- R3.1 State priority, highest first: Cannot read state, Restart pending, Not supported, Override set by another tool, Feature on by this program, Feature on by Microsoft, Supported feature off. The first state that matches applies.
-- R3.2 When the ownership record (R4.5) exists, show Undo in every state except "Cannot read state" and "Restart pending". Without the record, never show Undo.
+- R3.1 State priority, highest first: Restart pending (a "done" marker from the current boot that was read successfully, even when another read failed), Interrupted change, Cannot read state, Not supported, Override set by another tool, Feature on by this program, Feature on by Microsoft, Supported feature off. The first state that matches applies. "Feature on" (by this program or by Microsoft) means every feature ID configured in R9 is enabled; otherwise the feature counts as off.
+- R3.2 When the ownership record (R4.5) exists and the OS is a Windows 11 client edition (R2.2), show Undo in every state except "Cannot read state" and "Restart pending". Without the record, never show Undo.
 - R3.3 "Supported, feature off" applies only when no override exists or this program's ownership record exists. Enable never overwrites an override that has no ownership record. Accepted risk: if another tool changes the same ID after this program wrote it, the program does not detect that and treats the override as its own.
 
 ### R4. Enable
-- R4.1 "Enable" sets every feature ID in R9 to **enabled** in both the Runtime and the Boot store, with the same mechanism ViVeTool uses (persistent override that survives restart). Any ID with a foreign override in either store blocks Enable (R3.3).
+- R4.1 "Enable" sets every feature ID in R9 to **enabled** in both the Runtime and the Boot store, with the same mechanism ViVeTool uses (persistent override that survives restart). Any ID with a foreign override in either store blocks Enable (R3.3). Immediately before writing, Enable reads every configured ID and store again and stops without changes if anything differs from the state shown.
 - R4.2 After success, ask: **Restart now** or **Later**. "Restart now" restarts Windows. "Later" closes the dialog.
 - R4.3 The program does not restart Windows without the user's confirmation.
-- R4.4 Write the pending marker before Enable or Undo changes the feature store, so that after a successful Enable or Undo the pending marker exists with the current boot session identifier (for example the system boot time) under `HKLM\SOFTWARE\ToppyTaskbar`. If the change fails and is fully rolled back, delete the marker. If the marker cannot be written, stop and change nothing. At start, delete the marker if its boot session is not the current one.
+- R4.4 Write the pending marker with status "in progress" before Enable or Undo changes the feature store. Set it to "done" only after every write and the Boot-store pending notification (R4.7) succeed. A marker still "in progress" at start means "Interrupted change" (R3). Write the marker first so that after a successful Enable or Undo the pending marker exists with the current boot session identifier (for example the system boot time) under `HKLM\SOFTWARE\ToppyTaskbar`. If the change fails and is fully rolled back, delete the marker. If the marker cannot be written, stop and change nothing. At start, delete a "done" marker if its boot session is not the current one. Keep an "in progress" marker from any boot until Undo succeeds. Undo deletes the ownership record only after the marker is "done".
 - R4.5 Before Enable writes, store a durable ownership record under `HKLM\SOFTWARE\ToppyTaskbar`: each feature ID and store (Runtime, Boot) it writes, and the previous override value for that pair (or "none"). The record stays until Undo succeeds. If a record already exists (for example after a Windows update removed the override), keep its original previous values.
 - R4.6 Enable is all or nothing. If any write fails, restore the values that each ID had immediately before this attempt. Delete the ownership record only if this attempt created it and the rollback succeeds; otherwise keep the existing record. Show the error. If the rollback fails, keep the record, show the error with the IDs and their previous values, and show Undo so the user can try again.
+- R4.7 After every Boot-store change (Enable, Undo and rollback), send the same boot-pending notification ViVeTool sends (`UpdateLKGStatus(BootPending)`). If it fails, treat the operation as failed (R4.6).
 
 ### R5. Set the taskbar to top
 - R5.1 The program does **not** write the taskbar position itself.
@@ -66,7 +68,7 @@ The window shows one clear status line and only the buttons that apply:
 ### R6. Undo
 - R6.1 "Undo" restores, for each ID and store pair in the ownership record, its previous value: it removes the override if the previous value was "none", or writes the previous override back. It does not force IDs to "disabled". Then it deletes the ownership record.
 - R6.2 After success, ask: **Restart now** or **Later** (same as R4.2).
-- R6.3 Before Undo writes, show a confirmation: "If you want the taskbar at the bottom, set Taskbar position to Bottom in Settings first. Continue with Undo?" Buttons: Continue, Cancel (default).
+- R6.3 Before Undo writes, show a confirmation: "Undo affects every user on this PC. If you want the taskbar at the bottom, set Taskbar position to Bottom in Settings first, in each account that uses Top. Continue with Undo?" Buttons: Continue, Cancel (default).
 - R6.4 Undo never changes an ID that is not in the ownership record.
 
 ### R7. Start11
@@ -84,8 +86,9 @@ The window shows one clear status line and only the buttons that apply:
 - R9.1 Default: override only **59213768** (Taskbar position setting).
 - R9.2 Do not override bundle or unrelated IDs: **61161244** (update bundle, many features) and **61754985** (Start menu customization).
 - R9.3 Exception: if the release test on the target PC (R9.4) shows that 59213768 alone does not show the option, add 61161244 as a dependency. Document this in the release notes. Never add Start menu IDs.
-- R9.4 Before the first release, test on the target PC (Build 26200, the only supported build): enable, restart, confirm that "Taskbar position" shows, then Undo and confirm that it is hidden again.
+- R9.4 Before the first release, test on the target PC (Build 26200, the only supported build): turn off Start11's taskbar features, Enable, restart, confirm that "Taskbar position" shows, select Top and confirm that the taskbar moves to the top, select Bottom, then Undo, restart and confirm that the option is hidden again.
 - R9.5 Keep all IDs as constants in one place in the code.
+- R9.6 Store the highest tested UBR as a constant. If the PC has a higher UBR, show a note: "This Windows update is newer than the tested one. If the option does not appear, use Undo." Enable stays available.
 
 ## 3. Preferences and examples (not requirements)
 - **ViVeTool**: an example of the mechanism. The program can use its own code or a library. If it bundles ViVeTool code, its license (GPL-3.0) must be compatible with this repository (AGPL-3.0).
@@ -94,6 +97,7 @@ The window shows one clear status line and only the buttons that apply:
 - **Exact wording** of status texts: examples. Keep the meaning and the plain-language style.
 
 ## 4. Non-goals
+- No support for coordinating several user accounts. The tool targets a single-user PC; Undo only warns about other accounts (R6.3).
 - No code injection or hooks into `explorer.exe`.
 - No own taskbar or shell replacement.
 - No automatic write of the taskbar position value (undocumented storage).
